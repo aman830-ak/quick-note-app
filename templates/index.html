@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick-Note</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f4f8;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+        
+        /* Auth Styles */
+        .auth-container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+        .auth-container h1 { justify-content: center; margin-bottom: 30px; }
+        .auth-input {
+            width: 100%; padding: 12px; margin-bottom: 15px; box-sizing: border-box;
+            border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px;
+        }
+        .auth-btn { width: 100%; justify-content: center; margin-bottom: 15px; }
+        .auth-toggle { color: #0ea5e9; cursor: pointer; font-size: 14px; }
+        
+        /* Main App Styles (Initially Hidden) */
+        .app-container {
+            background-color: #f8fafc;
+            width: 100%;
+            max-width: 900px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 30px;
+            display: none; /* Hidden by default */
+            gap: 40px;
+        }
+        .left-panel, .right-panel { flex: 1; }
+        h1 { font-size: 24px; margin-top: 0; display: flex; align-items: center; gap: 10px; }
+        h2 { font-size: 18px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .note-count { font-size: 14px; font-weight: normal; color: #64748b; }
+        textarea {
+            width: 100%; height: 180px; padding: 15px; box-sizing: border-box;
+            border: 1px solid #cbd5e1; border-radius: 8px; resize: none; font-family: inherit;
+            font-size: 15px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-bottom: 15px;
+        }
+        button {
+            padding: 12px 24px; background-color: #0ea5e9; color: white; border: none;
+            border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold;
+            display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 6px rgba(14, 165, 233, 0.2);
+        }
+        button:hover { background-color: #0284c7; }
+        .logout-btn { background-color: #ef4444; padding: 8px 16px; font-size: 13px; box-shadow: none; }
+        .logout-btn:hover { background-color: #dc2626; }
+        .notes-list { display: flex; flex-direction: column; gap: 15px; max-height: 500px; overflow-y: auto; padding-right: 5px; }
+        .note-card { background-color: white; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .note-header { display: flex; justify-content: space-between; font-size: 12px; color: #64748b; margin-bottom: 8px; }
+        .action-icons span { cursor: pointer; margin-left: 8px; opacity: 0.7; }
+        .action-icons span:hover { opacity: 1; }
+        .note-content { font-size: 15px; line-height: 1.5; white-space: pre-wrap; color: #0f172a; }
+    </style>
+</head>
+<body>
+
+    <!-- Authentication View -->
+    <div class="auth-container" id="authView">
+        <h1>📝 Quick-Note</h1>
+        <h2 id="authTitle" style="justify-content: center;">Login</h2>
+        <input type="text" id="username" class="auth-input" placeholder="Username">
+        <input type="password" id="password" class="auth-input" placeholder="Password">
+        <button id="authBtn" class="auth-btn" onclick="handleAuth()">Login</button>
+        <p id="authError" style="color: red; font-size: 14px; display: none;"></p>
+        <span class="auth-toggle" onclick="toggleAuthMode()" id="authToggleText">Need an account? Register here</span>
+    </div>
+
+    <!-- Main App View -->
+    <div class="app-container" id="appView">
+        <div class="left-panel">
+            <h1>📝 Quick-Note</h1>
+            <h2 id="inputHeader">New Note</h2>
+            <textarea id="noteInput" placeholder="Type your note here..."></textarea>
+            <button id="saveBtn" onclick="submitNote()">💾 Save Note</button>
+        </div>
+
+        <div class="right-panel">
+            <h2>
+                <span id="welcomeText">Your Saved Notes</span> 
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </h2>
+            <div style="text-align: right; margin-bottom: 15px;"><span class="note-count" id="noteCount">0 notes</span></div>
+            <div id="notesContainer" class="notes-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let isLoginMode = true;
+        let editingNoteId = null;
+
+        // Check login status on page load
+        window.addEventListener('DOMContentLoaded', checkAuthStatus);
+
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch('/auth/status');
+                const data = await response.json();
+                if (data.logged_in) {
+                    showApp(data.username);
+                } else {
+                    showAuth();
+                }
+            } catch (error) { console.error('Error checking auth:', error); }
+        }
+
+        // --- Auth Functions ---
+        function toggleAuthMode() {
+            isLoginMode = !isLoginMode;
+            document.getElementById('authTitle').textContent = isLoginMode ? 'Login' : 'Register';
+            document.getElementById('authBtn').textContent = isLoginMode ? 'Login' : 'Register';
+            document.getElementById('authToggleText').textContent = isLoginMode ? 'Need an account? Register here' : 'Already have an account? Login here';
+            document.getElementById('authError').style.display = 'none';
+        }
+
+        async function handleAuth() {
+            const user = document.getElementById('username').value.trim();
+            const pass = document.getElementById('password').value;
+            const errorText = document.getElementById('authError');
+            
+            if (!user || !pass) {
+                errorText.textContent = "Please enter both username and password.";
+                errorText.style.display = 'block';
+                return;
+            }
+
+            const endpoint = isLoginMode ? '/auth/login' : '/auth/register';
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: user, password: pass })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    if (isLoginMode) {
+                        showApp(user);
+                    } else {
+                        alert("Registration successful! Please log in.");
+                        toggleAuthMode(); // Switch back to login
+                    }
+                } else {
+                    errorText.textContent = data.error;
+                    errorText.style.display = 'block';
+                }
+            } catch (error) { console.error('Auth error:', error); }
+        }
+
+        async function logout() {
+            await fetch('/auth/logout', { method: 'POST' });
+            showAuth();
+        }
+
+        function showApp(username) {
+            document.getElementById('authView').style.display = 'none';
+            document.getElementById('appView').style.display = 'flex';
+            document.getElementById('welcomeText').textContent = `${username}'s Notes`;
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            fetchNotes();
+        }
+
+        function showAuth() {
+            document.getElementById('authView').style.display = 'block';
+            document.getElementById('appView').style.display = 'none';
+        }
+
+        // --- Notes Functions (Same as before) ---
+        async function fetchNotes() {
+            const response = await fetch('/notes');
+            if (response.status === 401) { logout(); return; } // Kick out if session expired
+            const notes = await response.json();
+            renderNotes(notes);
+        }
+
+        function renderNotes(notes) {
+            const container = document.getElementById('notesContainer');
+            const countDisplay = document.getElementById('noteCount');
+            container.innerHTML = '';
+            countDisplay.textContent = `${notes.length} notes`;
+            
+            if (notes.length === 0) {
+                container.innerHTML = '<p style="color: #64748b;">No notes saved yet.</p>';
+                return;
+            }
+
+            notes.forEach(note => {
+                const card = document.createElement('div');
+                card.className = 'note-card';
+                const safeContent = note.content.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+
+                card.innerHTML = `
+                    <div class="note-header">
+                        <span>(${note.timestamp})</span>
+                        <span class="action-icons">
+                            <span onclick="startEdit(${note.id}, '${safeContent}')" title="Edit">✏️</span>
+                            <span onclick="deleteNote(${note.id})" title="Delete">🗑️</span>
+                        </span>
+                    </div>
+                    <div class="note-content">${note.content}</div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        async function submitNote() {
+            const content = document.getElementById('noteInput').value.trim();
+            if (!content) return;
+            const url = editingNoteId ? `/notes/${editingNoteId}` : '/notes';
+            const method = editingNoteId ? 'PUT' : 'POST';
+
+            await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content })
+            });
+            resetInput();
+            fetchNotes();          
+        }
+
+        async function deleteNote(id) {
+            if (!confirm("Are you sure you want to delete this note?")) return;
+            await fetch(`/notes/${id}`, { method: 'DELETE' });
+            if (editingNoteId === id) resetInput();
+            fetchNotes();
+        }
+
+        function startEdit(id, content) {
+            editingNoteId = id;
+            document.getElementById('noteInput').value = content;
+            document.getElementById('inputHeader').textContent = 'Edit Note';
+            document.getElementById('saveBtn').innerHTML = '💾 Update Note';
+            document.getElementById('saveBtn').style.backgroundColor = '#10b981';
+        }
+
+        function resetInput() {
+            editingNoteId = null;
+            document.getElementById('noteInput').value = '';
+            document.getElementById('inputHeader').textContent = 'New Note';
+            document.getElementById('saveBtn').innerHTML = '💾 Save Note';
+            document.getElementById('saveBtn').style.backgroundColor = '#0ea5e9';
+        }
+    </script>
+</body>
+</html>

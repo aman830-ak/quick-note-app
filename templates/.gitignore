@@ -1,0 +1,9 @@
+# Ignore the local SQLite database
+notes.db
+
+# Ignore Python cache and environment folders
+__pycache__/
+*.pyc
+venv/
+env/
+.env
